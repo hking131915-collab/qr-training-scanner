@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>QR Training Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 20px; }
+    #reader { width: 300px; margin: 0 auto; display:none; }
+    input {
+      padding: 6px;
+      margin: 4px;
+      width: 250px;
+      font-size: 16px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 18px;
+      margin: 10px;
+    }
+    #scanList {
+      list-style: none;
+      padding: 0;
+      max-width: 300px;
+      margin: 20px auto;
+      text-align: left;
+    }
+    #scanList li {
+      background: #f2f2f2;
+      padding: 8px;
+      margin-bottom: 6px;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+    #status {
+      font-size: 18px;
+      margin-top: 15px;
+      height: 24px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Training Session Scanner</h1>
+
+  <h3>Training Information</h3>
+
+  <label>Training Title:</label><br>
+  <input id="trainingTitle" type="text"><br><br>
+
+  <label>Date:</label><br>
+  <input id="trainingDate" type="date"><br><br>
+
+  <label>Hours:</label><br>
+  <input id="trainingHours" type="number" step="0.1"><br><br>
+
+  <button id="startSessionBtn">Start Session</button>
+  <button id="newSessionBtn" style="display:none;">New Session</button>
+
+  <div id="reader"></div>
+
+  <h2>Scanned Attendees</h2>
+  <ul id="scanList"></ul>
+
+  <p id="status"></p>
+
+  <script>
+    const WEB_APP_URL = "YOUR_WEB_APP_URL_HERE";
+
+    let sessionActive = false;
+    let html5QrCode = null;
+    let lastScan = "";
+    let scanCooldown = false;
+
+    // Store all scans for summary
+    let sessionScans = [];
+
+    const beep = new Audio("beep2.mp3");
+    beep.load();
+
+    function lockFields() {
+      document.getElementById("trainingTitle").disabled = true;
+      document.getElementById("trainingDate").disabled = true;
+      document.getElementById("trainingHours").disabled = true;
+    }
+
+    function unlockFields() {
+      document.getElementById("trainingTitle").disabled = false;
+      document.getElementById("trainingDate").disabled = false;
+      document.getElementById("trainingHours").disabled = false;
+    }
+
+    function addScanToList(name, starnumber) {
+      const list = document.getElementById("scanList");
+      const item = document.createElement("li");
+      item.textContent = `${name} — ${starnumber}`;
+      list.prepend(item);
+    }
+
+    function showWarning(message) {
+      const status = document.getElementById("status");
+      status.style.color = "red";
+      status.textContent = message;
+
+      setTimeout(() => {
+        status.textContent = "";
+      }, 3000);
+    }
+
+    function clearWarning() {
+      const status = document.getElementById("status");
+      status.textContent = "";
+      status.style.color = "black";
+    }
+
+    function onScanSuccess(decodedText) {
+      if (!sessionActive) return;
+      if (scanCooldown || decodedText === lastScan) return;
+
+      scanCooldown = true;
+      lastScan = decodedText;
+
+      beep.play();
+
+      // Normalize weird pipe characters
+      const cleaned = decodedText.replace(/[|¦｜‖∣]/g, "|");
+      const parts = cleaned.split("|").map(p => p.trim());
+
+      // Expected format: "NAME | STAR# | DIVISION"
+      const name = parts[0] || "";
+      const starnumber = parts[1] || "";
+      const division = parts[2] || "";
+
+      // Validate QR format
+      if (!name || !starnumber) {
+        showWarning("⚠️ Invalid QR code format. Please scan an approved training QR code.");
+        setTimeout(() => scanCooldown = false, 2000);
+        return;
+      }
+
+      // Duplicate scan check
+      if (sessionScans.some(s => s.starnumber === starnumber)) {
+        showWarning(`⚠️ Duplicate scan: ${name} (${starnumber}) already recorded.`);
+        setTimeout(() => scanCooldown = false, 2000);
+        return;
+      }
+
+      clearWarning();
+
+      // Add to on-screen list
+      addScanToList(name, starnumber);
+
+      // Add to session memory
+      sessionScans.push({ name, starnumber, division });
+
+      // Send to server
+      fetch(WEB_APP_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          starnumber,
+          division
+        })
+      });
+
+      setTimeout(() => scanCooldown = false, 2000);
+    }
+
+    document.getElementById("startSessionBtn").addEventListener("click", () => {
+      const title = document.getElementById("trainingTitle").value;
+      const date = document.getElementById("trainingDate").value;
+      const hours = document.getElementById("trainingHours").value;
+
+      if (!title || !date || !hours) {
+        alert("Please fill out all training fields before starting.");
+        return;
+      }
+
+      lockFields();
+      sessionActive = true;
+
+      document.getElementById("startSessionBtn").style.display = "none";
+      document.getElementById("newSessionBtn").style.display = "inline-block";
+      document.getElementById("reader").style.display = "block";
+
+      html5QrCode = new Html5Qrcode("reader");
+
+      html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 250 },
+        decodedText => onScanSuccess(decodedText)
+      );
+    });
+
+    document.getElementById("newSessionBtn").addEventListener("click", () => {
+      sessionActive = false;
+
+      // Send session summary
+      const summaryPayload = {
+        type: "summary",
+        trainingTitle: document.getElementById("trainingTitle").value,
+        trainingDate: document.getElementById("trainingDate").value,
+        trainingHours: document.getElementById("trainingHours").value,
+        scans: sessionScans
+      };
+
+      fetch(WEB_APP_URL, {
+        method: "POST",
+        body: JSON.stringify(summaryPayload)
+      });
+
+      // Reset UI
+      unlockFields();
+      document.getElementById("trainingTitle").value = "";
+      document.getElementById("trainingDate").value = "";
+      document.getElementById("trainingHours").value = "";
+
+      document.getElementById("scanList").innerHTML = "";
+      sessionScans = [];
+
+      document.getElementById("startSessionBtn").style.display = "inline-block";
+      document.getElementById("newSessionBtn").style.display = "none";
+      document.getElementById("reader").style.display = "none";
+
+      if (html5QrCode) html5QrCode.stop().catch(() => {});
+      html5QrCode = null;
+    });
+  </script>
+
+</body>
+</html>
