@@ -1,3 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>QR Training Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 20px; }
+    #reader { width: 300px; margin: 0 auto; display:none; }
+    input {
+      padding: 6px;
+      margin: 4px;
+      width: 250px;
+      font-size: 16px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 18px;
+      margin: 10px;
+      cursor: pointer;
+    }
+
+    #scanList {
+      list-style: none;
+      padding: 0;
+      max-width: 450px;
+      margin: 20px auto;
+      text-align: left;
+    }
+
+    #scanList li {
+      background: #f2f2f2;
+      padding: 8px;
+      margin-bottom: 6px;
+      border-radius: 4px;
+      font-size: 16px;
+
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .removeBtn {
+      background:#c62828;
+      color:white;
+      border:none;
+      padding:4px 8px;
+      border-radius:4px;
+      cursor:pointer;
+    }
+
+    #status {
+      font-size: 18px;
+      margin-top: 15px;
+      height: 24px;
+    }
+
+    /* ⭐ Instructor Toggle Switch */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 46px;
+      height: 24px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0;
+      right: 0; bottom: 0;
+      background-color: #ccc;
+      transition: .3s;
+      border-radius: 24px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: #4CAF50;
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(22px);
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- 🔐 PASSWORD SCREEN -->
+  <div id="passwordScreen">
+    <img src="Logo_NS_cmyk WO.png" alt="Company Logo" style="width: 400px;">
+    <h1>ACSO Training Roster</h1>
+    <h2>Enter Password</h2>
+    <input id="accessPassword" type="password" placeholder="Password"><br><br>
+    <button onclick="checkPassword()">Enter</button>
+    <p id="passwordError" style="color:red;"></p>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div id="mainContent" style="display:none;">
+
+    <div style="text-align:center; margin-bottom: 20px;">
+      <img src="Logo_NS_cmyk WO.png" alt="Company Logo" style="width: 400px;">
+    </div>
+
+    <h1>ACSO Training<br>Personnel Attendance Roster</h1>
+
+    <h3>Training Information</h3>
+
+    <label>Training Title:</label><br>
+    <input id="trainingTitle" type="text"><br><br>
+
+    <label>Date:</label><br>
+    <input id="trainingDate" type="date"><br><br>
+
+    <label>Hours:</label><br>
+    <input id="trainingHours" type="number" step="0.1"><br><br>
+
+    <h3>Submitter/Supervisor Information</h3>
+
+    <label>Your Name:</label><br>
+    <input id="submitterName" type="text" placeholder="Enter your full name"><br><br>
+
+    <label>Your Star Number:</label><br>
+    <input id="submitterStar" type="text" placeholder="Enter your star number"><br><br>
+
+    <h3>Notes</h3>
+    <h5 style="color:red;">Reported Injuries, Damaged Property, Safety Concerns, Associated Reports</h5>
+    <textarea id="trainingNotes" rows="4" style="width:260px; font-size:16px;"></textarea><br><br>
+
+    <h5>By clicking Start Session you acknowledge that all employees scanned/entered attended this training in its entirety.</h5>
+
+    <button id="startSessionBtn">Start Session</button>
+    <button id="newSessionBtn" style="display:none;">New Session</button>
+
+    <div id="reader"></div>
+
+    <!-- ⭐ MANUAL ENTRY SECTION -->
+    <div id="manualEntry" style="display:none; margin-top: 20px;">
+      <h3>Manual Entry</h3>
+
+      <label>Attendee Name:</label><br>
+      <input id="manualName" type="text" placeholder="Enter full name"><br><br>
+
+      <label>Star Number:</label><br>
+      <input id="manualStar" type="text" placeholder="Enter star number"><br><br>
+
+      <button id="addManualBtn">Add Attendee</button>
+    </div>
+
+    <h2>Scanned Attendees</h2>
+    <ul id="scanList"></ul>
+
+    <h2>Instructors</h2>
+    <ul id="instructorList"></ul>
+
+    <div style="margin-top: 40px; text-align : center;">
+	  <button id="downloadCsvBtn" style="display:none;">End Session / Submit</button>
+    </div>
+
+
+        <p id="status"></p>
+
+  </div> <!-- END mainContent -->
+
 <script>
 
   // 🔐 PASSWORD CHECK
@@ -66,15 +250,18 @@
 
   // ⭐ AUTO-SORT ATTENDEES (A → Z by name)
   function sortAttendees() {
-    sessionScans.sort((a, b) => a.name.localeCompare(b.name));
+  // Sort the data
+  sessionScans.sort((a, b) => a.name.localeCompare(b.name));
 
-    const list = document.getElementById("scanList");
-    list.innerHTML = "";
+  // Rebuild the visual list
+  const list = document.getElementById("scanList");
+  list.innerHTML = "";
 
-    sessionScans.forEach(s => {
-      addScanToList(s.name, s.starnumber);
-    });
-  }
+  sessionScans.forEach(s => {
+    addScanToList(s.name, s.starnumber);
+  });
+}
+
 
   // ⭐ ADD ATTENDEE WITH INSTRUCTOR TOGGLE
   function addScanToList(name, starnumber) {
@@ -164,47 +351,51 @@
     status.style.color = "black";
   }
 
-  // ⭐ QR SCAN SUCCESS
-  function onScanSuccess(decodedText) {
-    if (!sessionActive) return;
-    if (scanCooldown || decodedText === lastScan) return;
+ // ⭐ QR SCAN SUCCESS
+function onScanSuccess(decodedText) {
+  if (!sessionActive) return;
+  if (scanCooldown || decodedText === lastScan) return;
 
-    scanCooldown = true;
-    lastScan = decodedText;
+  scanCooldown = true;
+  lastScan = decodedText;
 
-    beep.play();
+  beep.play();
 
-    const cleaned = decodedText.replace(/[|¦｜‖∣]/g, "|");
-    const parts = cleaned.split("|").map(p => p.trim());
+  const cleaned = decodedText.replace(/[|¦｜‖∣]/g, "|");
+  const parts = cleaned.split("|").map(p => p.trim());
 
-    const name = parts[0] || "";
-    const starnumber = parts[1] || "";
-    const division = parts[2] || "";
+  const name = parts[0] || "";
+  const starnumber = parts[1] || "";
+  const division = parts[2] || "";
 
-    if (!name || !starnumber) {
-      showWarning("⚠️ Invalid QR code format.");
-      setTimeout(() => scanCooldown = false, 2000);
-      return;
-    }
-
-    if (sessionScans.some(s => s.starnumber === starnumber)) {
-      showWarning(`⚠️ Duplicate scan: ${name} (${starnumber})`);
-      setTimeout(() => scanCooldown = false, 2000);
-      return;
-    }
-
-    clearWarning();
-
-    addScanToList(name, starnumber);
-    showScanConfirmation(name, starnumber);
-
-    sessionScans.push({ name, starnumber, division });
-    saveSessionToLocalStorage();
-
-    sortAttendees();
-
+  if (!name || !starnumber) {
+    showWarning("⚠️ Invalid QR code format.");
     setTimeout(() => scanCooldown = false, 2000);
+    return;
   }
+
+  if (sessionScans.some(s => s.starnumber === starnumber)) {
+    showWarning(`⚠️ Duplicate scan: ${name} (${starnumber})`);
+    setTimeout(() => scanCooldown = false, 2000);
+    return;
+  }
+
+  clearWarning();
+
+  // ⭐ FIRST update the data array
+  sessionScans.push({ name, starnumber, division });
+
+  // ⭐ THEN sort the data
+  sortAttendees();
+
+  // ⭐ THEN show confirmation
+  showScanConfirmation(name, starnumber);
+
+  saveSessionToLocalStorage();
+
+  setTimeout(() => scanCooldown = false, 2000);
+}
+
 
   // ⭐ START SESSION
   document.getElementById("startSessionBtn").addEventListener("click", () => {
@@ -240,30 +431,33 @@
 
   // ⭐ MANUAL ENTRY
   document.getElementById("addManualBtn").addEventListener("click", () => {
-    const name = document.getElementById("manualName").value.trim();
-    const starnumber = document.getElementById("manualStar").value.trim();
+  const name = document.getElementById("manualName").value.trim();
+  const starnumber = document.getElementById("manualStar").value.trim();
 
-    if (!name || !starnumber) {
-      alert("Please enter both name and star number.");
-      return;
-    }
+  if (!name || !starnumber) {
+    alert("Please enter both name and star number.");
+    return;
+  }
 
-    if (sessionScans.some(s => s.starnumber === starnumber)) {
-      alert("This attendee is already recorded.");
-      return;
-    }
+  if (sessionScans.some(s => s.starnumber === starnumber)) {
+    alert("This attendee is already recorded.");
+    return;
+  }
 
-    addScanToList(name, starnumber);
-    showScanConfirmation(name, starnumber);
+  // ⭐ Update data first
+  sessionScans.push({ name, starnumber, division: "Manual Entry" });
 
-    sessionScans.push({ name, starnumber, division: "Manual Entry" });
-    saveSessionToLocalStorage();
+  // ⭐ Sort
+  sortAttendees();
 
-    sortAttendees();
+  // ⭐ Confirmation
+  showScanConfirmation(name, starnumber);
 
-    document.getElementById("manualName").value = "";
-    document.getElementById("manualStar").value = "";
-  });
+  saveSessionToLocalStorage();
+
+  document.getElementById("manualName").value = "";
+  document.getElementById("manualStar").value = "";
+});
 
   // ⭐ DOWNLOAD CSV
   function downloadCSV() {
